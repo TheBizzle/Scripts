@@ -1,0 +1,42 @@
+#!/bin/sh
+exec scala "$0" "$@"
+!#
+
+import java.io.{ File, FilenameFilter }
+import scala.sys.process.Process
+
+val args = argv.toSeq
+
+if (args.length != 2)
+  throw new Exception("Need 2 args: filePath, keyName")
+
+val Seq(filePath, keyName) = args
+
+val fileFilter = new FilenameFilter {
+  override def accept(dir: File, name: String) = name.toLowerCase.endsWith(".jar")
+}
+
+val file      = new File(filePath)
+val storePass = System.console.readPassword("Enter keystore password: ").mkString
+val keyPass   = System.console.readPassword(s"Enter key ($keyName) password: ").mkString
+
+def shell(cmd: String)(implicit context: File = new File(System.getProperty("user.home"))): String = Process(cmd, context).!!
+
+def signOne(file: File): Unit = {
+
+  val jarPath  = file.getAbsolutePath
+
+  val commands = Seq(
+    s"pack200 -r $jarPath",
+    s"jarsigner -storepass $storePass -keypass $keyPass $jarPath $keyName",
+    s"pack200 --modification-time=latest --effort=9 --no-keep-file-order ${jarPath}.pack.gz $jarPath"
+  )
+
+  commands foreach shell
+
+}
+
+if (file.isDirectory)
+  file listFiles fileFilter foreach signOne
+else
+  signOne(file)
